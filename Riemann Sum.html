@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riemann Sum Visualiser by ASV</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{
+    margin:0;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    background:#f5f7fa;
+}
+.container{
+    max-width:1000px;
+    margin:auto;
+    padding:20px;
+}
+h1{text-align:center}
+.hint{
+    text-align:center;
+    font-size:.9rem;
+    color:#555;
+    margin-bottom:14px;
+}
+.controls{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:12px;
+}
+label{font-weight:600;font-size:.9rem}
+input{
+    width:100%;
+    padding:8px;
+    font-size:1rem;
+}
+.slider{grid-column:1/-1}
+.summary{
+    background:white;
+    border-radius:12px;
+    padding:14px;
+    margin:16px 0;
+    box-shadow:0 4px 12px rgba(0,0,0,.06);
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+}
+canvas{
+    width:100%!important;
+    background:white;
+    border-radius:12px;
+    box-shadow:0 4px 12px rgba(0,0,0,.06);
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>Riemann Sum Visualiser by ASV</h1>
+
+<div class="hint">
+Examples: <b>sin(x), exp(-x^2), log(x), x^3</b><br>
+Limits: <b>pi, pi/2, 2*pi, -1.5</b>
+</div>
+
+<div class="controls">
+    <div>
+        <label>Function f(x)</label>
+        <input id="func" value="sin(x)">
+    </div>
+    <div>
+        <label>Lower limit a</label>
+        <input type="text" id="a" value="0">
+    </div>
+    <div>
+        <label>Upper limit b</label>
+        <input type="text" id="b" value="pi">
+    </div>
+    <div class="slider">
+        <label>Number of subintervals n:
+            <strong><span id="nVal">10</span></strong>
+        </label>
+        <input type="range" min="1" max="200" value="10" id="n">
+    </div>
+</div>
+
+<div class="summary" id="summary"></div>
+<canvas id="graph"></canvas>
+
+</div>
+
+<script>
+let chart;
+
+["func","a","b","n"].forEach(id =>
+    document.getElementById(id).addEventListener("input", compute)
+);
+
+function parseExpr(str){
+    let e=str.toLowerCase();
+    e=e.replace(/\^/g,"**");
+    e=e.replace(/\bpi\b/g,"Math.PI");
+    e=e.replace(/\be\b/g,"Math.E");
+    e=e.replace(/\bsin\b/g,"Math.sin");
+    e=e.replace(/\bcos\b/g,"Math.cos");
+    e=e.replace(/\btan\b/g,"Math.tan");
+    e=e.replace(/\blog\b/g,"Math.log");
+    e=e.replace(/\bexp\b/g,"Math.exp");
+    e=e.replace(/\bsqrt\b/g,"Math.sqrt");
+    return e;
+}
+
+function compute(){
+    nVal.innerText=n.value;
+
+    try{
+        const f=new Function("x","return "+parseExpr(func.value));
+        const aVal=eval(parseExpr(a.value));
+        const bVal=eval(parseExpr(b.value));
+        const nInt=parseInt(n.value);
+
+        if(!isFinite(aVal)||!isFinite(bVal)||bVal<=aVal) return;
+
+        const dx=(bVal-aVal)/nInt;
+        let U=0,L=0,R=0;
+        const uRects=[],lRects=[];
+
+        for(let i=0;i<nInt;i++){
+            const x0=aVal+i*dx,x1=x0+dx;
+            const f0=f(x0),f1=f(x1);
+            const sup=Math.max(f0,f1),inf=Math.min(f0,f1);
+
+            U+=sup*dx; L+=inf*dx; R+=f(x1)*dx;
+
+            uRects.push({x:x0,y:0},{x:x0,y:sup},{x:x1,y:sup},{x:x1,y:0},{x:null,y:null});
+            lRects.push({x:x0,y:0},{x:x0,y:inf},{x:x1,y:inf},{x:x1,y:0},{x:null,y:null});
+        }
+
+        const actual=simpson(f,aVal,bVal,400);
+
+        summary.innerHTML=`
+            <div><b>U(P,f):</b> ${U.toFixed(6)}</div>
+            <div><b>L(P,f):</b> ${L.toFixed(6)}</div>
+            <div><b>R(P,f):</b> ${R.toFixed(6)}</div>
+            <div><b>Actual Area:</b> ${actual.toFixed(6)}</div>
+        `;
+
+        draw(f,aVal,bVal,uRects,lRects);
+    }catch{
+        summary.innerHTML="<div>Invalid input</div>";
+    }
+}
+
+function simpson(f,a,b,m){
+    if(m%2)m++;
+    const h=(b-a)/m;
+    let s=f(a)+f(b);
+    for(let i=1;i<m;i++) s+=(i%2?4:2)*f(a+i*h);
+    return s*h/3;
+}
+
+function draw(f,a,b,u,l){
+    const curve=[];
+    for(let i=0;i<=400;i++){
+        const x=a+(b-a)*i/400;
+        curve.push({x,y:f(x)});
+    }
+
+    if(chart)chart.destroy();
+    chart=new Chart(graph,{
+        type:"line",
+        data:{datasets:[
+            {label:"U(P,f)",data:u,fill:true,backgroundColor:"rgba(214,39,40,.25)",borderColor:"rgba(214,39,40,.8)",pointRadius:0},
+            {label:"L(P,f)",data:l,fill:true,backgroundColor:"rgba(44,160,44,.25)",borderColor:"rgba(44,160,44,.8)",pointRadius:0},
+            {label:"f(x)",data:curve,borderColor:"#1f77b4",borderWidth:2,fill:false,pointRadius:0}
+        ]},
+        options:{scales:{x:{type:"linear"},y:{}}}
+    });
+}
+
+compute();
+</script>
+</body>
+</html>
